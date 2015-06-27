@@ -130,20 +130,52 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 		AssertThrow(EBR->isConditional(), not_found("end branch is not conditional"));
 		ICmpInst* EC = dyn_cast<ICmpInst>(EBR->getCondition());
       AssertThrow(EC, not_found("end condition is not icmp"));
-		if(EC->getPredicate() == EC->ICMP_SGT){
-         AssertThrow(!L->contains(EBR->getSuccessor(0)), not_found(dbg()<<"abnormal exit with great than:"<<*EBR));
+      
+      int flag = 1;
+      if(L->isLoopInvariant(EC->getOperand(1))){
+         end = EC->getOperand(1);
+         flag = 1;
+      }else if(auto LI_ptr = dyn_cast<LoadInst>(EC->getOperand(1))){
+         if(L->isLoopInvariant(LI_ptr->getOperand(0))){
+            end = LI_ptr->getOperand(0);
+            flag = 1;
+         }
+      }else if(L->isLoopInvariant(EC->getOperand(0))){
+         end = EC->getOperand(0);
+         flag = 0;
+      }else if(auto LI_ptr0 = dyn_cast<LoadInst>(EC->getOperand(0))){
+         if(L->isLoopInvariant(LI_ptr0->getOperand(0))){
+            end = LI_ptr0->getOperand(0);
+            flag = 0;
+         }
+      }else{
+		    end = EC->getOperand(1);
+          flag = 1;
+      }
+      IndOrNext = dyn_cast<Instruction>(castoff(EC->getOperand(1-flag)));
+
+      int a = -1;
+      if(!L->contains(EBR->getSuccessor(0)))
+            a = 0;
+      else if(!L->contains(EBR->getSuccessor(1)))
+            a = 1;
+      AssertThrow((a != -1), not_found(dbg()<<"abnormal exit"<<*EBR));
+
+	/*	if(EC->getPredicate() == EC->ICMP_SGT){
          //终止块的终止指令---->跳出执行循环外的指令
          OneStep += 1;
       } else if(EC->getPredicate() == EC->ICMP_EQ) {
+         a = 0;
          AssertThrow(!L->contains(EBR->getSuccessor(0)), not_found(dbg()<<"abnormal exit with great than:"<<*EBR));
       } else if(EC->getPredicate() == EC->ICMP_SLT) {
+         a = 1;
          AssertThrow(!L->contains(EBR->getSuccessor(1)), not_found(dbg()<<"abnormal exit with less than:"<<*EBR));
       } else {
          AssertThrow(0, not_found(dbg()<<"unknow combination of end condition:"<<*EC));
-      }
-		IndOrNext = dyn_cast<Instruction>(castoff(EC->getOperand(0)));//去掉类型转化
-		end = EC->getOperand(1);
-	}else if(isa<SwitchInst>(TE->getTerminator())){
+      }*/
+      //patch______________________________
+		//end = EC->getOperand(1-a);//去掉类型转化
+    	}else if(isa<SwitchInst>(TE->getTerminator())){
 		SwitchInst* ESW = const_cast<SwitchInst*>(cast<SwitchInst>(TE->getTerminator()));
 		IndOrNext = dyn_cast<Instruction>(castoff(ESW->getCondition()));
 		for(auto I = ESW->case_begin(),E = ESW->case_end();I!=E;++I){
@@ -155,8 +187,11 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 	}else{
 		AssertThrow(0 ,not_found("unknow terminator type"));
 	}
+   string s;
+   lle::coutValue(end, s);
 
-	AssertThrow(L->isLoopInvariant(end), not_found("end value should be loop invariant"));//至此得END值
+   AssertThrow(IndOrNext, not_found(s));
+	AssertThrow(L->isLoopInvariant(end), not_found(/*"end value should be loop invariant"*/s));//至此得END值
 
 	Instruction* next = NULL;
 	bool addfirst = false;//add before icmp ed
@@ -165,6 +200,7 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 	if(isa<LoadInst>(IndOrNext)){
 		//memory depend analysis
 		Value* PSi = IndOrNext->getOperand(0);//point type Step.i
+    //  if(!dyn_cast<Argument>(PSi)){
 		int SICount[2] = {0};//store in predecessor count,store in loop body count
 
       Value* Store;
@@ -194,6 +230,10 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
       AssertThrow(SICount[0]==1 && SICount[1]==1, 
             not_found(dbg() <<"should only have 1 store in/before loop:"
                <<SICount[1] <<"," <<SICount[0]<<*PSi));
+     // }
+     // else{
+       //  start = PSi;
+     // }
 		ind = IndOrNext;
 	}else{
 		if(isa<PHINode>(IndOrNext)){
@@ -220,8 +260,11 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 			}
 		}
 	}
-
-	AssertThrow(start , not_found("couldn't find a start value"));
+   
+   string s_ind;
+   coutValue(ind, s_ind);
+  // AssertThrow(ind, not_found("no ind"));
+	AssertThrow(start , not_found(/*"couldn't find a start value"*/s_ind));
 
 	//process non add later
 	unsigned next_phi_idx = 0;
@@ -236,8 +279,11 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 			}
 			PrevStep = step;
 		}
-		Assert(next->getOpcode() == Instruction::Add , "why induction increment is not Add");
-		Assert(next->getOperand(0) == ind ,"why induction increment is not add it self");
+		//Assert(next->getOpcode() == Instruction::Add , "why induction increment is not Add");
+      AssertThrow(next->getOpcode() == Instruction::Add, not_found("why induction increment is not add"));
+		//Assert(next->getOperand(0) == ind ,"why induction increment is not add it self");
+      AssertThrow(next->getOperand(0) == ind ,not_found("why induction increment is not add it self"));
+
 		step = dyn_cast<ConstantInt>(next->getOperand(1));
       AssertThrow(step, not_found(dbg() << "step is not a constant: " << *next->getOperand(1)))
 	}while(next_phi && ++next_phi_idx<next_phi->getNumIncomingValues());

@@ -10,11 +10,13 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/ADT/GraphTraits.h>
 #include <llvm/Support/raw_ostream.h>
-
+#include <string>
 #define WALK_THROUGH_DEPTH 10
 
 namespace lle
 {
+   //test to cout string
+   void coutValue(llvm::Value* v, std::string& s);
    // find string expr and priority for CmpInst and BinaryOperator
    const std::pair<const char*, int>& lookup_sym(llvm::CmpInst* CI);
    const std::pair<const char*, int>& lookup_sym(llvm::BinaryOperator* BO);

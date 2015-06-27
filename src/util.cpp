@@ -28,6 +28,15 @@ using namespace llvm;
 #define PUSH_BRACKETS(precd) if(precd>op_precd.back()) o<<LEFT_BRACKET; op_precd.push_back(precd);
 #define POP_BRACKETS(precd) op_precd.pop_back(); if(precd>op_precd.back()) o<<RIGHT_BRACKET;
 
+void  lle::coutValue(llvm::Value* v, std::string& s){
+   if(v == NULL){
+      s="";
+      return;
+   }
+   raw_string_ostream o(s);
+   v->print(o);
+}
+
 static SmallVector<int,16> op_precd((unsigned)1,16); // operator precedence with 1 element 16 back
 
 const pair<const char*, int>& lle::lookup_sym(BinaryOperator* BO)
