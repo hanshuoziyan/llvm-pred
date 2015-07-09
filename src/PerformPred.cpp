@@ -5,12 +5,16 @@
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Metadata.h>
+#include <llvm/IR/Module.h>
+#include <llvm/PassManager.h>
 
 #include "PredBlockProfiling.h"
 #include "LoopTripCount.h"
 #include "util.h"
 #include "debug.h"
+#include "BranchProbabilityPosterior.h"
 
+llvm::cl::opt<std::string> PostBranchPro("post-branch-pro",llvm::cl::desc("use the post branch probability"),llvm::cl::init(""));
 
 namespace lle {
    class PerformPred;
@@ -27,14 +31,17 @@ class lle::PerformPred : public llvm::FunctionPass
    llvm::DenseMap<llvm::Loop*, ViewPortElem> ViewPort; // Header -> (E_P, B_P,N, TC)
    llvm::BranchProbabilityInfo* BPI;
    llvm::BlockFrequencyInfo* BFI;
+   lle::BranchProbabilityPosterior* BPP;//Calculate the branch probability by reading the  profile. add by haomeng
    llvm::LoopInfo* LI;
    LoopTripCount* LTC;
    llvm::DominatorTree* DomT;
+   llvm::PassManager PassMgr;
 
    public:
    static char ID;
    PerformPred():llvm::FunctionPass(ID) {}
    bool runOnFunction(llvm::Function& F) override;
+   bool doInitialization(llvm::Module& M) override;
    void getAnalysisUsage(llvm::AnalysisUsage& AU) const override;
 
    private:
@@ -43,6 +50,8 @@ class lle::PerformPred : public llvm::FunctionPass
    llvm::BranchProbability getPathProb(llvm::BasicBlock* From, llvm::BasicBlock* To);
    llvm::BranchProbability getPathProb(llvm::BasicBlock *From, llvm::BlockFrequency To);
    llvm::BlockFrequency in_freq(llvm::Loop* L);
+
+
 };
 
 using namespace llvm;
@@ -159,6 +168,7 @@ static Value* selectBranch(IRBuilder<>& Builder, Value* True, BasicBlock* From, 
 
 void PerformPred::getAnalysisUsage(AnalysisUsage &AU) const
 {
+   //AU.addRequired<lle::BranchProbabilityPosterior>();
    AU.addRequired<LoopInfo>();
    AU.addRequired<LoopTripCount>();
    AU.addRequired<DominatorTreeWrapperPass>();
@@ -241,6 +251,7 @@ BasicBlock* PerformPred::promote(Instruction* LoopTC, Loop* L)
 
 BranchProbability PerformPred::getPathProb(BasicBlock *From, BasicBlock *To)
 {
+   BPP->getEdgeProbability(From, From);
    BranchProbability empty(1,1);
    if(From == NULL || To == NULL || From == To) return empty;
    Loop* F_L = LI->getLoopFor(From), *T_L = LI->getLoopFor(To);
@@ -252,7 +263,7 @@ BranchProbability PerformPred::getPathProb(BasicBlock *From, BasicBlock *To)
    if(Path.size()<2) return empty;
    size_t n=1,d=1;
    for(unsigned i = 0, e = Path.size()-1; i<e; ++i){
-      BranchProbability p2 = BPI->getEdgeProbability(Path[i], Path[i+1]);
+      BranchProbability p2 = BPP->getEdgeProbability(Path[i], Path[i+1]);
       n *= p2.getNumerator();
       d *= p2.getDenominator();
    }
@@ -274,13 +285,24 @@ BlockFrequency PerformPred::in_freq(Loop* L)
    for(auto P = pred_begin(H), E = pred_end(H); P!=E; ++P){
       BasicBlock* Pred = *P;
       if(L->contains(Pred)) continue;
-      in += BFI->getBlockFreq(Pred) * BPI->getEdgeProbability(Pred, H);
+      in += BFI->getBlockFreq(Pred) * BPP->getEdgeProbability(Pred, H);
    }
    return in;
 }
+bool PerformPred::doInitialization(llvm::Module& M)
+{
+   if(PostBranchPro != "")
+   {
+      PassMgr.add(createProfileLoaderPass(PostBranchPro));
+      ProfileInfoLoader PIL("profile-loader",PostBranchPro);
+      BPP = new BranchProbabilityPosterior(PIL);
+      PassMgr.add(BPP);
+      PassMgr.run(M);
+   }
+   return true;
+}
 
-
-bool PerformPred::runOnFunction(Function &F)
+bool PerformPred::runOnFunction(llvm::Function &F)
 {
    if( F.isDeclaration() ) return false;
    Promoted.clear();
@@ -291,6 +313,7 @@ bool PerformPred::runOnFunction(Function &F)
    BFI = &getAnalysis<BlockFrequencyInfo>();
    DomT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
    LTC->updateCache(*LI);
+   
 
    IRBuilder<> Builder(F.getEntryBlock().getTerminator());
    BasicBlock* Entry = &F.getEntryBlock();
