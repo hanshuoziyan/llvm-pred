@@ -251,21 +251,40 @@ BasicBlock* PerformPred::promote(Instruction* LoopTC, Loop* L)
 
 BranchProbability PerformPred::getPathProb(BasicBlock *From, BasicBlock *To)
 {
-   BPP->getEdgeProbability(From, From);
+   //BPP->getEdgeProbability(From, To);
    BranchProbability empty(1,1);
    if(From == NULL || To == NULL || From == To) return empty;
    Loop* F_L = LI->getLoopFor(From), *T_L = LI->getLoopFor(To);
+   llvm::BranchProbability oldPro = BFI->getBlockFreq(To)/BFI->getBlockFreq(From); 
    if(F_L == T_L) // they are in same loop level
-      return BFI->getBlockFreq(To)/BFI->getBlockFreq(From);
+   {
+      if(PostBranchPro != "")
+         return BPP->getEdgeProbability(From, To);
+      else
+         return oldPro;
+   }
    //XXX temporary for simplification
-   return BFI->getBlockFreq(To)/BFI->getBlockFreq(From);
+   if(PostBranchPro != "") 
+      return BPP->getEdgeProbability(From, To);
+   else
+      return oldPro;
+   //return BFI->getBlockFreq(To)/BFI->getBlockFreq(From);
    auto Path = getPath(From, To);
    if(Path.size()<2) return empty;
    size_t n=1,d=1;
    for(unsigned i = 0, e = Path.size()-1; i<e; ++i){
-      BranchProbability p2 = BPP->getEdgeProbability(Path[i], Path[i+1]);
-      n *= p2.getNumerator();
-      d *= p2.getDenominator();
+      if(PostBranchPro != "")
+      {
+         BranchProbability p2 = BPP->getEdgeProbability(Path[i], Path[i+1]);
+         n *= p2.getNumerator();
+         d *= p2.getDenominator();
+      }
+      else
+      {
+         BranchProbability p2 = BPI->getEdgeProbability(Path[i], Path[i+1]);
+         n *= p2.getNumerator();
+         d *= p2.getDenominator();
+      }
    }
    return scale(BranchProbability(n,d));
 }
@@ -273,20 +292,35 @@ BranchProbability PerformPred::getPathProb(BasicBlock *From, BlockFrequency To)
 {
    //Assume they are in same loop level
    //(F-->T) = bfreq_LLVM(T)/bfreq_LLVM(F)
-   return scale(To/BFI->getBlockFreq(From));
+   //errs()<< "Hello world!\n";
+   if(PostBranchPro != "")
+      return scale(To/BPP->getBbCount(From));
+   else
+      return scale(To/BFI->getBlockFreq(From));
 }
 
 BlockFrequency PerformPred::in_freq(Loop* L)
 {
+   //errs()<< "in_freq\n";
    BasicBlock* P = L->getLoopPreheader();
-   if(P) return BFI->getBlockFreq(P);
+   if(P) 
+   {
+      if(PostBranchPro != "")
+         return BPP->getBbCount(P);
+      else
+         return BFI->getBlockFreq(P);
+   }
    BlockFrequency in;
    BasicBlock* H = L->getHeader();
    for(auto P = pred_begin(H), E = pred_end(H); P!=E; ++P){
       BasicBlock* Pred = *P;
       if(L->contains(Pred)) continue;
-      in += BFI->getBlockFreq(Pred) * BPP->getEdgeProbability(Pred, H);
+      if(PostBranchPro != "")
+         in += BPP->getBbCount(Pred) * BPP->getEdgeProbability(Pred, H);
+      else 
+         in += BFI->getBlockFreq(Pred) * BPI->getEdgeProbability(Pred, H);
    }
+   //errs()<< "end in_freq\n";
    return in;
 }
 bool PerformPred::doInitialization(llvm::Module& M)
@@ -337,7 +371,10 @@ bool PerformPred::runOnFunction(llvm::Function &F)
          Builder.SetInsertPoint(E_V->getTerminator());
          if (TC == NULL) {
             // freq(H) / in_freq would get trip count as llvm's freq
-            TC = CreateMul(Builder, one(*BB), BFI->getBlockFreq(BB) / P);
+            if(PostBranchPro != "")
+               TC = CreateMul(Builder, one(*BB),BPP->getBbCount(BB) / P);
+            else
+               TC = CreateMul(Builder, one(*BB),BFI->getBlockFreq(BB) / P);
          } 
          if (PL == NULL) { // TC (V-->P), if PL is NULL, it is Top Loop
 #if defined(PROMOTE_FREQ_path_prob)

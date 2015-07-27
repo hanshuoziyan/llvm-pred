@@ -26,5 +26,6 @@ class lle::BranchProbabilityPosterior:public llvm::ModulePass
       explicit BranchProbabilityPosterior(llvm::ProfileInfoLoader& _PIL):llvm::ModulePass(ID),PIL(_PIL){}
       bool runOnModule(llvm::Module& M);
       llvm::BranchProbability getEdgeProbability(const llvm::BasicBlock *Src,const llvm::BasicBlock *Dst) const;
+      llvm::BlockFrequency getBbCount(const llvm::BasicBlock *Src) const;
       void getAnalysisUsage(llvm::AnalysisUsage& AU) const override;
 };

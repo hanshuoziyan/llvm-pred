@@ -47,10 +47,20 @@ BranchProbability BranchProbabilityPosterior::getEdgeProbability(const BasicBloc
 {
    double srcCount = PI->getExecutionCount(Src);
    double edgeCount = PI->getEdgeWeight(PI->getEdge(Src, Dst));
-   //errs()<<"================================="<<srcCount<<"\n";
-   //errs()<<">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"<<edgeCount<<"\n";
-   //if(srcCount <= dstCount)
-   //   return BranchProbability(1,1);
+  // errs() << srcCount << "\t"<<edgeCount<<"\n";
+   if (edgeCount < 0 || srcCount <= 0)
+   {
+      BranchProbability tmp = BranchProbability(0,1);
+      return tmp;
+   }
+   assert(srcCount > 0 && "Denomiator cannot be 0!");
+   assert(edgeCount <= srcCount && "Probability cannot be bigger than 1!"); 
    return BranchProbability(edgeCount,srcCount);
 
+}
+
+llvm::BlockFrequency BranchProbabilityPosterior::getBbCount(const BasicBlock* Src) const
+{
+   //errs()<<"In getBb Count \t"<<PI->getExecutionCount(Src)<<"\n";
+   return PI->getExecutionCount(Src);
 }
