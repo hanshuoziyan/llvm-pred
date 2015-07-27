@@ -284,7 +284,7 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 		//Assert(next->getOperand(0) == ind ,"why induction increment is not add it self");
       AssertThrow(next->getOperand(0) == ind ,not_found("why induction increment is not add it self"));
 
-		step = dyn_cast<ConstantInt>(next->getOperand(1));
+		step = dyn_cast<ConstantInt>(castoff(next->getOperand(1)));
       AssertThrow(step, not_found(dbg() << "step is not a constant: " << *next->getOperand(1)))
 	}while(next_phi && ++next_phi_idx<next_phi->getNumIncomingValues());
 
