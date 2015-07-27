@@ -293,10 +293,7 @@ BranchProbability PerformPred::getPathProb(BasicBlock *From, BlockFrequency To)
    //Assume they are in same loop level
    //(F-->T) = bfreq_LLVM(T)/bfreq_LLVM(F)
    //errs()<< "Hello world!\n";
-   if(PostBranchPro != "")
-      return scale(To/BPP->getBbCount(From));
-   else
-      return scale(To/BFI->getBlockFreq(From));
+   return scale(To/BFI->getBlockFreq(From));
 }
 
 BlockFrequency PerformPred::in_freq(Loop* L)
@@ -305,10 +302,7 @@ BlockFrequency PerformPred::in_freq(Loop* L)
    BasicBlock* P = L->getLoopPreheader();
    if(P) 
    {
-      if(PostBranchPro != "")
-         return BPP->getBbCount(P);
-      else
-         return BFI->getBlockFreq(P);
+      return BFI->getBlockFreq(P);
    }
    BlockFrequency in;
    BasicBlock* H = L->getHeader();
@@ -371,9 +365,6 @@ bool PerformPred::runOnFunction(llvm::Function &F)
          Builder.SetInsertPoint(E_V->getTerminator());
          if (TC == NULL) {
             // freq(H) / in_freq would get trip count as llvm's freq
-            if(PostBranchPro != "")
-               TC = CreateMul(Builder, one(*BB),BPP->getBbCount(BB) / P);
-            else
                TC = CreateMul(Builder, one(*BB),BFI->getBlockFreq(BB) / P);
          } 
          if (PL == NULL) { // TC (V-->P), if PL is NULL, it is Top Loop
