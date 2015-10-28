@@ -63,6 +63,7 @@ void LoopTripCount::getAnalysisUsage(llvm::AnalysisUsage & AU) const
 
 LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 {
+   //AnalysisedLoop ret = {0,NULL,NULL,NULL,NULL,NULL,NULL,add};
 #ifdef TC_USE_SCEV
    auto& SE = getAnalysis<ScalarEvolution>();
    const SCEV* LoopInfo = SE.getBackedgeTakenCount(L);
@@ -76,7 +77,8 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
       if(Found != Preheader->end()) TC = &*Found;
    }*/
    if(!isa<SCEVCouldNotCompute>(LoopInfo)){
-      AnalysisedLoop ret = {0};
+     AnalysisedLoop ret = {0};
+      
       ret.userdata = const_cast<void*>((const void*)LoopInfo);
       ret.TripCount = TC;
       return ret;
@@ -242,10 +244,12 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 			if(castoff(PHI->getIncomingValue(0)) == castoff(PHI->getIncomingValue(1)) && PHI->getParent() != H)
 				ind = castoff(PHI->getIncomingValue(0));
 			addfirst = false;
-		}else if(IndOrNext->getOpcode() == Instruction::Add){
+		}else if(IndOrNext->getOpcode() == Instruction::Add){// || IndOrNext->getOpcode() == Instruction::Shl){
 			next = IndOrNext;
 			addfirst = true;
-		}else{
+		}/*else if(IndOrNext->getOpcode() == Instruction::Shl){
+         AssertThrow(0,not_found("shl"));
+      }*/else{
 			AssertThrow(0 , not_found("unknow how to analysis"));
 		}
 
@@ -280,18 +284,32 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 			PrevStep = step;
 		}
 		//Assert(next->getOpcode() == Instruction::Add , "why induction increment is not Add");
-      AssertThrow(next->getOpcode() == Instruction::Add, not_found("why induction increment is not add"));
+     AssertThrow(next->getOpcode() == Instruction::Add, not_found("why induction increment is not add"));
 		//Assert(next->getOperand(0) == ind ,"why induction increment is not add it self");
       AssertThrow(next->getOperand(0) == ind ,not_found("why induction increment is not add it self"));
-
-		step = dyn_cast<ConstantInt>(castoff(next->getOperand(1)));
+      /*if(next->getOpcode() == Instruction::Shl){
+         AssertThrow(0,not_found("test shl if"));
+         Type* ty = next->getOperand(1)->getType();
+         AssertThrow(next->getOperand(1) == ConstantInt::get(ty,(uint64_t)1), not_found("why shl operand is not 1"));
+         ret.type = shl;
+      }*/
+      step = dyn_cast<ConstantInt>(castoff(next->getOperand(1)));
       AssertThrow(step, not_found(dbg() << "step is not a constant: " << *next->getOperand(1)))
 	}while(next_phi && ++next_phi_idx<next_phi->getNumIncomingValues());
 
 	if(addfirst) OneStep -= 1;
 	if(step->isMinusOne()) OneStep*=-1;
 	assert(OneStep<=1 && OneStep>=-1);
+   /*ret.AdjustStep = OneStep;
+   ret.Start = start;
+   ret.Step = step;
+   ret.End = end;
+   ret.Ind = ind;
+
+   return ret;*/
+   //return AnalysisedLoop{OneStep, start,step,end,ind,NULL,NULL,add};
    return AnalysisedLoop{OneStep, start,step,end,ind};
+
 }
 Value* ScevToInst(const SCEV *scev_expr,llvm::Instruction *InsertPos){
    if(auto constant_scev = dyn_cast<SCEVConstant>(scev_expr)){
@@ -349,36 +367,42 @@ Value* LoopTripCount::insertTripCount(AnalysisedLoop AL, StringRef HeaderName, I
       return inst;
    }
 #endif
-	Value* RES = NULL;
-   Value* start = AL.Start, *END = AL.End;
-   if(!start || !END || !InsertPos || !AL.Step) return NULL;
-   ConstantInt* Step = dyn_cast<ConstantInt>(AL.Step);
-   int OneStep = AL.AdjustStep;
-	//if there are no predecessor, we can insert code into start value basicblock
-	IRBuilder<> Builder(InsertPos);
-   Type* I32Ty = Builder.getInt32Ty();
-	Assert(start->getType()->isIntegerTy() && END->getType()->isIntegerTy() , " why increment is not integer type");
+   //LoopType ty = AL.type;
+   //if(ty == add){
+      Value* RES = NULL;
+      Value* start = AL.Start, *END = AL.End;
+      if(!start || !END || !InsertPos || !AL.Step) return NULL;
+      ConstantInt* Step = dyn_cast<ConstantInt>(AL.Step);
+      int OneStep = AL.AdjustStep;
+      //if there are no predecessor, we can insert code into start value basicblock
+      IRBuilder<> Builder(InsertPos);
+      Type* I32Ty = Builder.getInt32Ty();
+      Assert(start->getType()->isIntegerTy() && END->getType()->isIntegerTy() , " why increment is not integer type");
 
 #define AdjustType(v) ((v->getType() != I32Ty)?\
-         Builder.CreateCast(CastInst::getCastOpcode(v, false, I32Ty, false), v, I32Ty):\
-         v)
-   // adjust type to int 32
-   start = AdjustType(start);
-   END = AdjustType(END);
-   Step = dyn_cast<ConstantInt>(AdjustType(Step));
-   AssertRuntime(Step, "");
+      Builder.CreateCast(CastInst::getCastOpcode(v, false, I32Ty, false), v, I32Ty):\
+      v)
+      // adjust type to int 32
+      start = AdjustType(start);
+      END = AdjustType(END);
+      Step = dyn_cast<ConstantInt>(AdjustType(Step));
+      AssertRuntime(Step, "");
 #undef AdjustType
 
-	if(Step->isMinusOne())
-		RES = Builder.CreateSub(start,END);
-	else//Step Couldn't be zero
-		RES = Builder.CreateSub(END, start);
-	RES = (OneStep==1)?Builder.CreateAdd(RES,Step):(OneStep==-1)?Builder.CreateSub(RES, Step):RES;
-	if(!Step->isMinusOne()&&!Step->isOne())
-		RES = Builder.CreateSDiv(RES, Step);
-	RES->setName(HeaderName+".tc");
+      if(Step->isMinusOne())
+         RES = Builder.CreateSub(start,END);
+      else//Step Couldn't be zero
+         RES = Builder.CreateSub(END, start);
+      RES = (OneStep==1)?Builder.CreateAdd(RES,Step):(OneStep==-1)?Builder.CreateSub(RES, Step):RES;
+      if(!Step->isMinusOne()&&!Step->isOne())
+         RES = Builder.CreateSDiv(RES, Step);
+      RES->setName(HeaderName+".tc");
 
-	return RES;
+      return RES;
+   //}
+   /*else if(ty == shl){
+      AssertThrow(0, not_found("test shl"));
+   }*/
 }
 
 bool LoopTripCount::runOnFunction(Function &F)
@@ -394,6 +418,7 @@ bool LoopTripCount::runOnFunction(Function &F)
          Loop* L = *LIte;
          Value* TC = NULL;
          AnalysisedLoop AL = {0};
+         //AnalysisedLoop AL = {0,NULL,NULL,NULL,NULL,NULL,NULL,add};
          ++LoopCount;
          try{
             AL = analysis(L);
