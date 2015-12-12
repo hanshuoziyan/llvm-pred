@@ -124,20 +124,28 @@ static Value* CreateMul(IRBuilder<>& Builder, Value* TripCount, BranchProbabilit
 {
    static double square = std::sqrt(INT32_MAX);
    uint32_t n = prob.getNumerator(), d = prob.getDenominator();
-   if(n == d) return TripCount; /* TC * 1.0 */
-   Type* I32Ty = Type::getInt32Ty(TripCount->getContext());
    Type* FloatTy = Type::getDoubleTy(TripCount->getContext());
+   Type* I32Ty = Type::getInt32Ty(TripCount->getContext());
+   if(n == d) return Builder.CreateSIToFP(TripCount, FloatTy); /* TC * 1.0 */
    Value* Ret = TripCount;
-   if(n>square){
+   errs()<<"Ni mei\n";
+   //if(n>square){
+   if(true){
+      errs()<<"Hello world!\n";
       // it may overflow, use float to caculate
       Ret = Builder.CreateFMul(Builder.CreateSIToFP(Ret, FloatTy), ConstantFP::get(FloatTy, (double)n/d));
       std::string hint;
       raw_string_ostream(hint)<<"hint."<<n<<"."<<d<<"."<<format("%.3f",(float)n/d);
       LLVMContext& C = Builder.getContext();
       cast<Instruction>(Ret)->setMetadata(hint, MDNode::get(C, MDString::get(C,"lle")));
-      return Builder.CreateFPToSI(Ret, I32Ty);
+      //return Builder.CreateFPToSI(Ret, I32Ty);
+      return Ret;
    }
-   if(n!=1) Ret = Builder.CreateMul(Ret, ConstantInt::get(I32Ty, n));
+   if(n!=1){
+      errs() << "Hello world!\n";
+      errs() << *Ret << "\n";
+      Ret = Builder.CreateMul(Ret, ConstantInt::get(I32Ty, n));
+   }
    return Builder.CreateSDiv(Ret, ConstantInt::get(I32Ty, d));
 }
 
@@ -186,7 +194,7 @@ BasicBlock* PerformPred::findCriticalBlock(BasicBlock *From, BasicBlock *To)
    do{
       Last = To;
       To = DomT.getNode(To)->getIDom()->getBlock();
-   }while(!DomT.dominates(To, From));
+   }while(!DomT.dominates(To, From)); //Returns true if To dominates From
    return Last;
 }
 
@@ -306,7 +314,7 @@ BlockFrequency PerformPred::in_freq(Loop* L)
    }
    BlockFrequency in;
    BasicBlock* H = L->getHeader();
-   for(auto P = pred_begin(H), E = pred_end(H); P!=E; ++P){
+   for(auto P = pred_begin(H), E = pred_end(H); P!=E; ++P){/*An Interval is a set of nodes defined such that every node in the interval has all of its predecessors in the interval (except for the header)*/
       BasicBlock* Pred = *P;
       if(L->contains(Pred)) continue;
       if(PostBranchPro != "")
@@ -347,7 +355,7 @@ bool PerformPred::runOnFunction(llvm::Function &F)
    BasicBlock* Entry = &F.getEntryBlock();
 
    for(Loop* TopL : *LI){
-      for (auto LI = df_begin(TopL), LE = df_end(TopL); LI != LE; ++LI) {
+      for (auto LI = df_begin(TopL), LE = df_end(TopL); LI != LE; ++LI) {/*df_begin  Normal depth-first iteration - visit a node and then all of its children.*/
          Loop* L = *LI;
          Loop* PL = L->getParentLoop();
          Value* TC = LTC->getOrInsertTripCount(L);
@@ -382,6 +390,7 @@ bool PerformPred::runOnFunction(llvm::Function &F)
                B_PN = CreateMul(Builder, B_PN, getPathProb(PL->getHeader(),
                                                            P)); // B_PN (H-->P)
                B_PN = Builder.CreateMul(B_PN, TC); // B_PN (H-->P) %tc
+               errs()<<*B_PN<<"\n";
             }else{
                B_PN = one(*BB);
                Loop* IL;
@@ -417,8 +426,12 @@ bool PerformPred::runOnFunction(llvm::Function &F)
       }
 
       Builder.SetInsertPoint(E_V->getTerminator());
+      errs() << "========"<< "\n";
+      errs() << getPathProb(H, &BB) << "\n";
       Value* freq = CreateMul(Builder, B_PN, getPathProb(H, &BB));
+      errs()<< BB.getParent()->getName() << "\t" << BB.getName() << "\t" << *freq << "\n";
       freq = force_insert(freq, Builder, BB.getName() + ".bfreq");
+      errs()<< *freq << "\n";
 
       PredBlockProfiler::increaseBlockCounter(&BB, freq,
                                               Builder.GetInsertPoint());

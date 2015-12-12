@@ -47,7 +47,7 @@ BranchProbability BranchProbabilityPosterior::getEdgeProbability(const BasicBloc
 {
    double srcCount = PI->getExecutionCount(Src);
    double edgeCount = PI->getEdgeWeight(PI->getEdge(Src, Dst));
-  // errs() << srcCount << "\t"<<edgeCount<<"\n";
+   errs() << srcCount << "\t"<<edgeCount<<"\n";
    if (edgeCount < 0 || srcCount <= 0)
    {
       BranchProbability tmp = BranchProbability(0,1);

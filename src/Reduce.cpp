@@ -433,6 +433,10 @@ recaculate:
          if(I->second == false) {
             ++I;continue;
          }
+         //add by haomeng
+         if(F->getName() == "haomeng_print_" || F->getName() == "haomeng_print_double_"){
+            ++I;continue;
+         }
          if((I->second = runOnFunction(*F))){
             Dirty = true;
             washFunction(F);
