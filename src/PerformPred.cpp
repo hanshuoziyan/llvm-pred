@@ -126,10 +126,10 @@ static Value* CreateMul(IRBuilder<>& Builder, Value* TripCount, BranchProbabilit
    static double square = std::sqrt(INT32_MAX);
    uint32_t n = prob.getNumerator(), d = prob.getDenominator();
    Type* FloatTy = Type::getDoubleTy(TripCount->getContext());
-   Type* I32Ty = Type::getInt32Ty(TripCount->getContext());
 #ifdef USE_DOUBLE_ARRAY
    if(n == d) return Builder.CreateSIToFP(TripCount, FloatTy); /* TC * 1.0 */
 #else
+   Type* I32Ty = Type::getInt32Ty(TripCount->getContext());
    if(n == d) return TripCount; /* TC * 1.0 */
 #endif
    Value* Ret = TripCount;
