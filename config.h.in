@@ -10,6 +10,7 @@
 #define PROMOTE_FREQ_@PROMOTE_FREQ@
 #cmakedefine TC_USE_SCEV
 #cmakedefine DELETE_STORE
+#cmakedefine DELETE_RETURN
 #cmakedefine USE_CACHE
 #cmakedefine USE_PROMOTE
 #cmakedefine USE_DOUBLE_ARRAY
