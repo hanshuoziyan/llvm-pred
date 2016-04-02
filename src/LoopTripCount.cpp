@@ -10,13 +10,14 @@
 #include <llvm/Transforms/Utils/LoopUtils.h>
 #include <llvm/Analysis/ScalarEvolution.h>
 #include <llvm/Analysis/ScalarEvolutionExpressions.h>
+#include <llvm/IR/Argument.h>
 #include <map>
 #include <vector>
 #include <algorithm>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/Analysis/ScalarEvolutionExpander.h>
-
+#include <llvm/Transforms/Scalar.h>
 #include "util.h"
 #include "config.h"
 #include "LoopTripCount.h"
@@ -57,13 +58,16 @@ static Value* tryFindStart(PHINode* IND,Loop* L,BasicBlock*& StartBB)
 
 void LoopTripCount::getAnalysisUsage(llvm::AnalysisUsage & AU) const
 {
+   //AU.addPreservedID(LoopSimplifyID);
 	AU.addRequired<LoopInfo>();
+   AU.addRequiredID(LoopSimplifyID);
    AU.addRequired<ScalarEvolution>();
+   AU.addRequiredID(LoopSimplifyID);
 }
 
 LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 {
-   //AnalysisedLoop ret = {0,NULL,NULL,NULL,NULL,NULL,NULL,add};
+   AnalysisedLoop ret = {0,NULL,NULL,NULL,NULL,NULL,NULL,add};
 #ifdef TC_USE_SCEV
    auto& SE = getAnalysis<ScalarEvolution>();
    const SCEV* LoopInfo = SE.getBackedgeTakenCount(L);
@@ -244,7 +248,7 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 			if(castoff(PHI->getIncomingValue(0)) == castoff(PHI->getIncomingValue(1)) && PHI->getParent() != H)
 				ind = castoff(PHI->getIncomingValue(0));
 			addfirst = false;
-		}else if(IndOrNext->getOpcode() == Instruction::Add){// || IndOrNext->getOpcode() == Instruction::Shl){
+		}else if(IndOrNext->getOpcode() == Instruction::Add || IndOrNext->getOpcode() == Instruction::Shl || IndOrNext->getOpcode() == Instruction::SDiv){
 			next = IndOrNext;
 			addfirst = true;
 		}/*else if(IndOrNext->getOpcode() == Instruction::Shl){
@@ -283,16 +287,47 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 			}
 			PrevStep = step;
 		}
+      //added by hanshuo
+      /*
+       * dt程序
+       * %12 = sdiv i32 %numLayerNodes.013, 4
+       * %13 = shl nsw i32 %12, 2
+       * %14 = icmp slt i32 %13, %numLayerNodes.013
+       * %15 = zext i1 %14 to i32
+       * %. = add nsw i32 %15, %12
+       * %16 = icmp sgt i32 %., 0
+       * br i1 %16, label %.lr.ph11, label %.preheader2
+       */
+      if(next->getOperand(0) != ind){
+         auto ir = next->getOperand(0)->use_begin();
+         if(isa<CastInst>(*ir));
+         else
+            AssertThrow(next->getOperand(0) == ind ,not_found("verify why induction increment is not add it self"));
+         if(isa<ConstantInt>(castoff(next->getOperand(1))))
+            step = cast<ConstantInt>(castoff(next->getOperand(1)));
+         else{
+            next = dyn_cast<Instruction>(castoff(next->getOperand(1)));
+            //Type* ty = next->getOperand(1)->getType();
+            //step = dyn_cast<ConstantInt>(ConstantInt::get(ty,(uint64_t)2));
+         }
+      }
+      
+
 		//Assert(next->getOpcode() == Instruction::Add , "why induction increment is not Add");
-     AssertThrow(next->getOpcode() == Instruction::Add, not_found("why induction increment is not add"));
-		//Assert(next->getOperand(0) == ind ,"why induction increment is not add it self");
-      AssertThrow(next->getOperand(0) == ind ,not_found("why induction increment is not add it self"));
-      /*if(next->getOpcode() == Instruction::Shl){
-         AssertThrow(0,not_found("test shl if"));
+
+      //AssertThrow(next->getOpcode() == Instruction::Add, not_found("why induction increment is not add"));
+		Assert(next->getOperand(0) == ind ,"why induction increment is not add it self");
+      if(next->getOpcode() == Instruction::Shl){
+         //AssertThrow(0,not_found("test shl if"));
          Type* ty = next->getOperand(1)->getType();
          AssertThrow(next->getOperand(1) == ConstantInt::get(ty,(uint64_t)1), not_found("why shl operand is not 1"));
          ret.type = shl;
-      }*/
+      }else if(next->getOpcode() == Instruction::SDiv){
+         //Type* ty = next->getOperand(1)->getType();
+         //AssertThrow(next->getOperand(1) == ConstantInt::get(ty,(uint64_t)2), not_found("why sdiv operand is not 2"));
+         ret.type = sdiv;
+
+      }
       step = dyn_cast<ConstantInt>(castoff(next->getOperand(1)));
       AssertThrow(step, not_found(dbg() << "step is not a constant: " << *next->getOperand(1)))
 	}while(next_phi && ++next_phi_idx<next_phi->getNumIncomingValues());
@@ -300,15 +335,15 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 	if(addfirst) OneStep -= 1;
 	if(step->isMinusOne()) OneStep*=-1;
 	assert(OneStep<=1 && OneStep>=-1);
-   /*ret.AdjustStep = OneStep;
+   ret.AdjustStep = OneStep;
    ret.Start = start;
    ret.Step = step;
    ret.End = end;
    ret.Ind = ind;
 
-   return ret;*/
+   return ret;
    //return AnalysisedLoop{OneStep, start,step,end,ind,NULL,NULL,add};
-   return AnalysisedLoop{OneStep, start,step,end,ind};
+   //return AnalysisedLoop{OneStep, start,step,end,ind};
 
 }
 Value* ScevToInst(const SCEV *scev_expr,llvm::Instruction *InsertPos){
@@ -367,28 +402,28 @@ Value* LoopTripCount::insertTripCount(AnalysisedLoop AL, StringRef HeaderName, I
       return inst;
    }
 #endif
-   //LoopType ty = AL.type;
+   LoopType ty = AL.type;
    //if(ty == add){
-      Value* RES = NULL;
-      Value* start = AL.Start, *END = AL.End;
-      if(!start || !END || !InsertPos || !AL.Step) return NULL;
-      ConstantInt* Step = dyn_cast<ConstantInt>(AL.Step);
-      int OneStep = AL.AdjustStep;
-      //if there are no predecessor, we can insert code into start value basicblock
-      IRBuilder<> Builder(InsertPos);
-      Type* I32Ty = Builder.getInt32Ty();
-      Assert(start->getType()->isIntegerTy() && END->getType()->isIntegerTy() , " why increment is not integer type");
+   Value* RES = NULL;
+   Value* start = AL.Start, *END = AL.End;
+   if(!start || !END || !InsertPos || !AL.Step) return NULL;
+   ConstantInt* Step = dyn_cast<ConstantInt>(AL.Step);
+   int OneStep = AL.AdjustStep;
+   //if there are no predecessor, we can insert code into start value basicblock
+   IRBuilder<> Builder(InsertPos);
+   Type* I32Ty = Builder.getInt32Ty();
+   Assert(start->getType()->isIntegerTy() && END->getType()->isIntegerTy() , " why increment is not integer type");
 
 #define AdjustType(v) ((v->getType() != I32Ty)?\
       Builder.CreateCast(CastInst::getCastOpcode(v, false, I32Ty, false), v, I32Ty):\
       v)
-      // adjust type to int 32
-      start = AdjustType(start);
-      END = AdjustType(END);
-      Step = dyn_cast<ConstantInt>(AdjustType(Step));
-      AssertRuntime(Step, "");
+   // adjust type to int 32
+   start = AdjustType(start);
+   END = AdjustType(END);
+   Step = dyn_cast<ConstantInt>(AdjustType(Step));
+   AssertRuntime(Step, "");
 #undef AdjustType
-
+   if(ty == add){
       if(Step->isMinusOne())
          RES = Builder.CreateSub(start,END);
       else//Step Couldn't be zero
@@ -399,10 +434,36 @@ Value* LoopTripCount::insertTripCount(AnalysisedLoop AL, StringRef HeaderName, I
       RES->setName(HeaderName+".tc");
 
       return RES;
-   //}
-   /*else if(ty == shl){
-      AssertThrow(0, not_found("test shl"));
-   }*/
+   }
+   else if(ty == shl){
+      //AssertThrow(0, not_found("test shl"));
+      RES = Builder.CreateSDiv(END, start);
+      Builder.CreateCast(CastInst::getCastOpcode(RES, false, I32Ty, false), RES, I32Ty);
+      Builder.CreateLShr(RES, 23);
+      Builder.CreateAnd(RES, 0xff);
+      Builder.CreateCast(CastInst::getCastOpcode(RES,false,I32Ty,false),RES,I32Ty);
+      Builder.CreateSub(RES,ConstantInt::get(RES->getType(), (uint64_t)127));
+      RES->setName(HeaderName+".tc");
+      return RES;
+
+   }else if(ty == sdiv){
+      RES = Builder.CreateSDiv(start, END);
+      Builder.CreateCast(CastInst::getCastOpcode(RES, false, I32Ty, false), RES, I32Ty);
+      Builder.CreateLShr(RES, 23);
+      Builder.CreateAnd(RES, 0xff);
+      Builder.CreateCast(CastInst::getCastOpcode(RES,false,I32Ty,false),RES,I32Ty);
+      Builder.CreateSub(RES,ConstantInt::get(RES->getType(), (uint64_t)127));
+
+      Builder.CreateCast(CastInst::getCastOpcode(Step, false, I32Ty, false), Step, I32Ty);
+      Builder.CreateLShr(Step, 23);
+      Builder.CreateAnd(Step, 0xff);
+      Builder.CreateCast(CastInst::getCastOpcode(Step,false,I32Ty,false),Step,I32Ty);
+      Builder.CreateSub(Step,ConstantInt::get(Step->getType(), (uint64_t)127));
+      Builder.CreateSDiv(RES, Step);
+      RES->setName(HeaderName+".tc");
+      return RES;
+
+   }
 }
 
 bool LoopTripCount::runOnFunction(Function &F)

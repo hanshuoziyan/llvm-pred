@@ -40,7 +40,7 @@ namespace lle
          int AdjustStep;
          llvm::Value* Start, *Step, *End, *Ind, *TripCount;
          void* userdata;
-         //LoopType type;// = add;
+         LoopType type;// = add;
       };
 		// a stable cache, the index of Loop in df order -> LoopTripCount
       std::vector<AnalysisedLoop> CycleMap;
