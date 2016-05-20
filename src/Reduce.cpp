@@ -199,6 +199,7 @@ AttributeFlags ReduceCode::noused_param(Argument* Arg)
 
 static AttributeFlags noused(llvm::Value* V)
 {
+   errs()<<*V<<"\n";
    ResolveEngine RE;
    RE.addRule(RE.ibase_rule);
    Value* Ref;
@@ -332,8 +333,10 @@ bool ReduceCode::runOnFunction(Function& F)
          AttributeFlags flag = AttributeFlags::None;
          if(CallInst* CI = dyn_cast<CallInst>(Inst)){
             flag = getAttribute(CI);
+#ifdef DELETE_RETURN
          }else if(ReturnInst* RI = dyn_cast<ReturnInst>(Inst)){
             flag = noused_ret_rep(RI);
+#endif
 #ifdef DELETE_STORE //delete store inst
          }else if(StoreInst* SI = dyn_cast<StoreInst>(Inst)){
             flag = getAttribute(SI);
@@ -431,6 +434,10 @@ recaculate:
       for(auto I = DirtyFunc.begin(); I!= DirtyFunc.end(); ){
          Function* F = I->first;
          if(I->second == false) {
+            ++I;continue;
+         }
+         //add by haomeng
+         if(F->getName() == "haomeng_print_" || F->getName() == "haomeng_print_double_"){
             ++I;continue;
          }
          if((I->second = runOnFunction(*F))){

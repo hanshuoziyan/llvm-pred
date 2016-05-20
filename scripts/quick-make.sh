@@ -82,7 +82,7 @@ name=${name%.bc}
 
 # compile code
 if [ "$EDGE" -eq "1" ]; then
-$FRONT $opt $ARG_BEG -load src/libLLVMPred.so -insert-edge-profiling $input -o /tmp/$name.e.ll -S $ARG_END
+$FRONT $opt $ARG_BEG -load src/libLLVMPred.so -insert-edge-profiling insert-mpi-profiling $input -o /tmp/$name.e.ll -S $ARG_END
 statement_comp $i; i=$?
 suffix="e"
 else

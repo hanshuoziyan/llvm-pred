@@ -20,8 +20,10 @@ set_property(CACHE PROMOTE_FREQ PROPERTY STRINGS "select" "path_prob")
 option(UNIT_TEST "Enable Build Unit Test" Off)
 option(TC_USE_SCEV "LoopTripcount use SCEV" Off)
 option(DELETE_STORE "Delete the Store instructions" Off)
+option(DELETE_RETURN "Delete the Return instructions" Off)
 option(USE_CACHE "Use Cache to Speedup Cacluate" Off)
 option(USE_PROMOTE "Use Promote Algorithm to promote view port" On)
+option(USE_DOUBLE_ARRAY "Use the array with double type to do the instrumentation" OFF)
 
 
 find_package(PkgConfig)

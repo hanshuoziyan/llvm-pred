@@ -31,6 +31,7 @@ add_library(LLVMPred SHARED
    Print.cpp
    util.cpp
    ddg.cpp
+   BranchProbabilityPosterior.cpp
    )
 
 target_link_libraries(LLVMPred
