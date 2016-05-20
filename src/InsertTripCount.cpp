@@ -5,6 +5,7 @@
 #include <ValueProfiling.h>
 #include <llvm/Analysis/ScalarEvolution.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Transforms/Scalar.h>
 
 #include <iostream>
 #include <list>
@@ -38,16 +39,21 @@ using namespace lle;
 using namespace llvm;
 
 char InsertLoopTripCount::ID = 0;
-
 static RegisterPass<InsertLoopTripCount> Y("Insert-Trip-Count", "Insert Loop Trip Count into Module", true, true);
+/*INITIALIZE_PASS_BEGIN(InsertLoopTripCount, "Insert-Trip-Count", "Insert Loop Trip Count into Module", false, false);
+INITIALIZE_PASS_DEPENDENCY(LoopSimplify);
+INITIALIZE_PASS_END(InsertLoopTripCount, "Insert-Trip-Count", "Insert Loop Trip Count into Module", false, false);*/
 
 void InsertLoopTripCount::getAnalysisUsage(llvm::AnalysisUsage & AU) const
 {
   AU.setPreservesAll();
+  AU.addPreservedID(LoopSimplifyID);
   AU.addRequired<LoopInfo>();
   //AU.addRequired<ResolverPass>();
   AU.addRequired<LoopTripCount>();
+  AU.addRequiredID(LoopSimplifyID);
   AU.addRequired<ScalarEvolution>();
+  AU.addRequiredID(LoopSimplifyID);
 }
 
 bool InsertLoopTripCount::runOnLoop(llvm::Loop *L)

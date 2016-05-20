@@ -26,15 +26,23 @@ namespace lle
 
 	class LoopTripCount:public llvm::FunctionPass
 	{
+      typedef enum LoopType{
+         add,
+         shl,
+         sdiv
+      }LoopType;
 		//statistics variable:{
 		std::string unfound_str;
 		llvm::raw_string_ostream unfound;
+      int loop_count = 0;
+      int scev_found = 0;//added by hanshuo
 		//}
       llvm::LoopInfo* LI;
       struct AnalysisedLoop {
          int AdjustStep;
          llvm::Value* Start, *Step, *End, *Ind, *TripCount;
          void* userdata;
+         LoopType type;// = add;
       };
 		// a stable cache, the index of Loop in df order -> LoopTripCount
       std::vector<AnalysisedLoop> CycleMap;
