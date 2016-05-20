@@ -34,6 +34,8 @@ namespace lle
 		//statistics variable:{
 		std::string unfound_str;
 		llvm::raw_string_ostream unfound;
+      int loop_count = 0;
+      int scev_found = 0;//added by hanshuo
 		//}
       llvm::LoopInfo* LI;
       struct AnalysisedLoop {

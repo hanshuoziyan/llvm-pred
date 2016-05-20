@@ -34,6 +34,7 @@ char LoopTripCount::ID = 0;
 static RegisterPass<LoopTripCount> X("Loop-Trip-Count","Generate and insert loop trip count pass", false, false);
 static unsigned LoopCount;
 static unsigned UnfoundCount;
+static unsigned SCEV_found;
 
 //find start value fron induction variable
 static Value* tryFindStart(PHINode* IND,Loop* L,BasicBlock*& StartBB)
@@ -67,6 +68,7 @@ void LoopTripCount::getAnalysisUsage(llvm::AnalysisUsage & AU) const
 
 LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
 {
+   this->loop_count++;
    AnalysisedLoop ret = {0,NULL,NULL,NULL,NULL,NULL,NULL,add};
 #ifdef TC_USE_SCEV
    auto& SE = getAnalysis<ScalarEvolution>();
@@ -85,6 +87,7 @@ LoopTripCount::AnalysisedLoop LoopTripCount::analysis(Loop* L)
       
       ret.userdata = const_cast<void*>((const void*)LoopInfo);
       ret.TripCount = TC;
+      SCEV_found++;
       return ret;
    }
 #endif
@@ -473,7 +476,7 @@ bool LoopTripCount::runOnFunction(Function &F)
    CycleMap.clear();
    unfound_str = "";
    LoopCount = UnfoundCount = 0;
-
+   SCEV_found = 0;
    for(Loop* TopL : *LI){
       for(auto LIte = df_begin(TopL), E = df_end(TopL); LIte!=E; ++LIte){
          Loop* L = *LIte;
@@ -519,9 +522,12 @@ void LoopTripCount::print(llvm::raw_ostream& OS,const llvm::Module*) const
          OS<<"Start:"<<*AL->Start<<"\n";
          OS<<"Step:"<<*AL->Step<<"\n";
          OS<<"End:"<<*AL->End<<"\n";
+
+                  
+
       }
    }
-   OS << "there are " << LoopCount << " loops " << UnfoundCount
+   OS << "there are " << LoopCount <<" ScalarNotFound "<<LoopCount-SCEV_found<< " AnalysisNotFound " << UnfoundCount
           << " unfound\n";
    OS<<unfound_str;
 }
@@ -533,6 +539,7 @@ Loop* LoopTripCount::getLoopFor(BasicBlock *BB) const
 
 Value* LoopTripCount::getOrInsertTripCount(Loop *L)
 {
+   //this->scev_found = 0;
    if(L->getLoopPreheader()==NULL){
       InsertPreheaderForLoop(L, this);
    }
